@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NOC Tracker</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --fg: #1d1f21;
+      --bg: #f7f7f8;
+      --card: #ffffff;
+      --muted: #777;
+      --accent: #2563eb;
+      --ok: #16a34a;
+      --warn: #b45309;
+      --border: #e3e3e8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --fg: #e7e7ea;
+        --bg: #15171a;
+        --card: #1d2024;
+        --muted: #9aa0a6;
+        --border: #2c3036;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      padding: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    h1 { margin: 0 0 4px; }
+    h2 { margin: 32px 0 8px; font-size: 1.1rem; }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .me {
+      border-left: 4px solid var(--accent);
+    }
+    .me strong { font-size: 1.1rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--muted); font-weight: 500; }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      background: var(--border);
+    }
+    .badge.online { background: var(--ok); color: white; }
+    .badge.offline { background: var(--warn); color: white; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    input, button {
+      font: inherit;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--fg);
+    }
+    button {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      cursor: pointer;
+    }
+    button.danger {
+      background: transparent;
+      color: var(--warn);
+      border-color: var(--warn);
+    }
+    code { font-family: ui-monospace, monospace; font-size: 0.85rem; }
+
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .toolbar .spacer { flex: 1; }
+    .toggle-group { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    .toggle-group button { border: none; border-radius: 0; background: var(--card); color: var(--fg); padding: 6px 12px; }
+    .toggle-group button.active { background: var(--accent); color: white; }
+    .floorplan-wrap {
+      position: relative;
+      width: 100%;
+      background: repeating-linear-gradient(45deg, transparent 0 8px, rgba(127,127,127,0.05) 8px 9px);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    #floorplan-svg { display: block; width: 100%; height: auto; user-select: none; touch-action: none; }
+    .ap-dot { cursor: default; }
+    .floorplan-wrap.editing .ap-dot { cursor: grab; }
+    .ap-dot.dragging { cursor: grabbing !important; }
+    .ap-dot.unplaced { opacity: 0.55; }
+    .ap-dot circle { stroke: var(--card); stroke-width: 2; transition: fill 0.3s; }
+    .ap-dot.active circle {
+      animation: ap-pulse 1.3s ease-in-out infinite;
+    }
+    .ap-dot.active .halo {
+      fill: none;
+      stroke: #16a34a;
+      animation: ap-halo 1.6s ease-out infinite;
+      pointer-events: none;
+    }
+    /* Red highlight when the viewer's own device is connected to this AP —
+       overrides .active's green so "where am I" is always findable. */
+    .ap-dot.me-here .halo { stroke: #dc2626; }
+    .ap-dot.me-here .body-circle { fill: #dc2626 !important; }
+    /* Floorplan image deliberately washed out so the dots/pings pop. */
+    #floorplan-image { opacity: 0.45; }
+    @keyframes ap-pulse {
+      0%, 100% { opacity: 1; stroke-width: 2; }
+      50%      { opacity: 0.8; stroke-width: 6; }
+    }
+    @keyframes ap-halo {
+      0%   { opacity: 0.9; stroke-width: 3; transform: scale(1); }
+      100% { opacity: 0;   stroke-width: 1; transform: scale(2.2); }
+    }
+    .ap-dot text.ap-label { font-size: 11px; font-weight: 600; fill: var(--card); pointer-events: none; paint-order: stroke; stroke: rgba(0,0,0,0.45); stroke-width: 3px; stroke-linejoin: round; }
+    .ap-dot text.ap-name { font-size: 10px; fill: var(--fg); pointer-events: none; paint-order: stroke; stroke: var(--card); stroke-width: 3px; stroke-linejoin: round; }
+    .ap-dot:hover circle { stroke: var(--accent); }
+    .user-pin rect { fill: var(--accent); }
+    .user-pin text { font-size: 10px; fill: white; pointer-events: none; }
+    .empty-floorplan {
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    /* Map-only mode (?embed=1) — hides everything except the floorplan and
+       its mode toggle, then expands to fill the viewport. Intended for
+       venue monitors / projector dashboards. */
+    body.embed { max-width: none; padding: 0; }
+    body.embed h1,
+    body.embed h2,
+    body.embed > .muted,
+    body.embed #me,
+    body.embed #clients-card,
+    body.embed #clients-controls,
+    body.embed #edit-mode-label,
+    body.embed #save-positions,
+    body.embed #admin-logout {
+      display: none !important;
+    }
+    body.embed .card { margin: 0; border: none; border-radius: 0; padding: 8px; }
+    body.embed .floorplan-wrap { background: none; }
+    body.embed #floorplan-svg { height: calc(100vh - 60px); width: 100%; }
+    body.embed #floorplan-status { padding: 0 8px 8px; }
+  </style>
+</head>
+<body>
+  <div id="js-error-banner" style="display:none; background:#dc2626; color:white; padding:12px 16px; border-radius:6px; margin-bottom:16px; font-family:ui-monospace,monospace; font-size:0.85rem; white-space:pre-wrap;"></div>
+  <h1>NOC Tracker</h1>
+  <div class="muted" id="status">読み込み中…</div>
+
+  <div id="me" class="card me">
+    <div class="muted">あなたの位置</div>
+    <div id="me-body">特定中…</div>
+    <form id="quick-register-form" class="row" style="margin-top:8px; display:none">
+      <input id="quick-register-name" placeholder="お名前 (例: koichi)" required style="flex:1; min-width:200px;">
+      <button type="submit">この端末を登録する</button>
+    </form>
+    <div id="ip-override-status" class="muted" style="margin-top:6px; display:none">
+      IP指定中: <code id="ip-override-display"></code>
+      <a href="#" id="ip-clear-link" style="margin-left:8px">[クリア]</a>
+    </div>
+  </div>
+
+  <h2>会場マップ</h2>
+  <div class="card">
+    <div class="toolbar">
+      <label id="edit-mode-label" hidden><input type="checkbox" id="edit-mode"> 編集モード (AP をドラッグ)</label>
+      <span id="admin-badge" class="muted" hidden>👤 管理者としてログイン中</span>
+      <div class="spacer"></div>
+      <div class="toggle-group" id="view-toggle">
+        <button type="button" data-view="me" class="active">自分の位置</button>
+        <button type="button" data-view="all">全員の位置</button>
+      </div>
+      <button type="button" id="save-positions" hidden disabled>座標を保存する</button>
+      <button type="button" id="admin-logout" class="danger" hidden>ログアウトする</button>
+    </div>
+    <div class="floorplan-wrap" id="floorplan-wrap">
+      <svg id="floorplan-svg" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet">
+        <image id="floorplan-image" href="/floorplan" x="0" y="0" width="1000" height="600" preserveAspectRatio="xMidYMid meet"/>
+        <g id="ap-layer"></g>
+        <g id="user-layer"></g>
+      </svg>
+    </div>
+    <div class="muted" id="floorplan-status" style="margin-top:8px"></div>
+  </div>
+
+  <h2>クライアント一覧</h2>
+  <div id="clients-controls" class="row" style="margin-bottom:8px; padding: 0 4px;">
+    <label><input type="checkbox" id="show-all-clients"> 未登録の端末も表示する (重くなります)</label>
+  </div>
+  <div id="clients-card" class="card" style="padding:0; overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>状態</th>
+          <th>名前</th>
+          <th>MAC</th>
+          <th>IP</th>
+          <th>接続AP</th>
+          <th>SSID</th>
+          <th>信号</th>
+          <th>ソース</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="clients-body"></tbody>
+    </table>
+  </div>
+
+<script>
+// Surface any JS runtime error directly to the page. Without this, a single
+// TypeError early in the script silently leaves the page blank — exactly
+// the symptom that's hard to debug remotely.
+window.addEventListener('error', (ev) => {
+  const banner = document.getElementById('js-error-banner');
+  if (banner) {
+    banner.style.display = 'block';
+    banner.textContent =
+      'JS error: ' + (ev.message || ev.error) +
+      '\n  at ' + (ev.filename || '?') + ':' + (ev.lineno || '?') + ':' + (ev.colno || '?');
+  }
+});
+window.addEventListener('unhandledrejection', (ev) => {
+  const banner = document.getElementById('js-error-banner');
+  if (banner) {
+    banner.style.display = 'block';
+    banner.textContent = 'Unhandled promise rejection: ' + (ev.reason && ev.reason.message || ev.reason);
+  }
+});
+console.log('[noc-tracker] script start');
+
+// Map-only display mode: <host>/?embed=1 hides chrome and lets the SVG
+// expand to the viewport. Handy for sticking the dashboard on a venue TV.
+if (new URLSearchParams(location.search).get('embed') === '1') {
+  document.body.classList.add('embed');
+}
+
+const REFRESH_MS = 5000;
+
+// Pull `?admin=<token>` and `?ip=<override>` out of the URL on first load,
+// stash them in localStorage, and strip them from the address bar so they
+// don't get shared when someone copy-pastes the URL.
+(function captureURLOverrides() {
+  const params = new URLSearchParams(location.search);
+  let touched = false;
+  if (params.has('admin')) {
+    localStorage.setItem('noc-tracker-admin-token', params.get('admin'));
+    params.delete('admin');
+    touched = true;
+  }
+  if (params.has('ip')) {
+    const ip = params.get('ip').trim();
+    if (ip) localStorage.setItem('noc-tracker-ip', ip);
+    else localStorage.removeItem('noc-tracker-ip');
+    params.delete('ip');
+    touched = true;
+  }
+  if (touched) {
+    const qs = params.toString();
+    history.replaceState({}, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+  }
+})();
+
+function applyIPOverrideUI() {
+  const ip = localStorage.getItem('noc-tracker-ip');
+  const status = document.getElementById('ip-override-status');
+  if (!status) return;
+  if (ip) {
+    document.getElementById('ip-override-display').textContent = ip;
+    status.style.display = 'block';
+  } else {
+    status.style.display = 'none';
+  }
+}
+
+async function fetchJSON(url, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({}, opts.headers || {});
+  const token = localStorage.getItem('noc-tracker-admin-token');
+  if (token) opts.headers['X-Admin-Token'] = token;
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (r.status === 204) return null;
+  return await r.json();
+}
+
+// Auth state, refreshed on every poll tick. UI hides/shows edit controls
+// based on this — the server is still the source of truth (it rejects POSTs
+// without a valid token), but client-side hiding keeps the toolbar clean.
+const auth = { admin_required: false, is_admin: true };
+
+async function refreshAuth() {
+  try {
+    const a = await fetchJSON('/api/auth');
+    auth.admin_required = !!a.admin_required;
+    auth.is_admin = !!a.is_admin;
+  } catch (_) { /* leave previous state */ }
+  applyAuthUI();
+}
+
+function applyAuthUI() {
+  const canEdit = auth.is_admin;
+  document.getElementById('edit-mode-label').hidden = !canEdit;
+  document.getElementById('save-positions').hidden = !canEdit;
+  document.getElementById('admin-badge').hidden = !(auth.admin_required && auth.is_admin);
+  document.getElementById('admin-logout').hidden = !(auth.admin_required && auth.is_admin);
+  if (!canEdit && floorplan.editing) {
+    floorplan.editing = false;
+    document.getElementById('edit-mode').checked = false;
+    renderFloorplan();
+  }
+}
+
+document.getElementById('admin-logout').addEventListener('click', async () => {
+  localStorage.removeItem('noc-tracker-admin-token');
+  await refreshAuth();
+});
+
+function fmtSignal(c) {
+  if (c.signal_dbm) return `${c.signal_dbm} dBm`;
+  return '';
+}
+
+function meURL() {
+  const ip = localStorage.getItem('noc-tracker-ip');
+  return ip ? '/api/me?ip=' + encodeURIComponent(ip) : '/api/me';
+}
+
+// ===== Floorplan =====
+// State is intentionally kept in module-scope objects (not classes) — the UI
+// is small enough that an object-orientated rewrite would just add ceremony.
+const floorplan = {
+  positions: {},       // saved positions from /api/ap-positions
+  pending: {},         // unsaved drags, layered on top of `positions`
+  knownAPs: [],        // every AP name we've seen in any sighting
+  view: 'me',          // 'me' (only my MAC) | 'all' (every registered MAC)
+  myMAC: null,         // resolved from /api/me on every refresh tick
+  editing: false,
+  draggingAP: null,    // AP name currently being dragged (suppresses re-renders)
+  imageLoaded: false,
+  imageW: 1000,
+  imageH: 600,
+};
+
+function effectivePosition(ap) {
+  return floorplan.pending[ap] || floorplan.positions[ap] || null;
+}
+
+function unplacedStackPosition(idx) {
+  // Lay unplaced APs in a column along the left edge so the user can grab them.
+  return { x: 24, y: 24 + idx * 32 };
+}
+
+function setupFloorplanImage() {
+  const img = document.getElementById('floorplan-image');
+  const svg = document.getElementById('floorplan-svg');
+  const status = document.getElementById('floorplan-status');
+
+  const probe = new Image();
+  probe.onload = () => {
+    floorplan.imageLoaded = true;
+    floorplan.imageW = probe.naturalWidth;
+    floorplan.imageH = probe.naturalHeight;
+    svg.setAttribute('viewBox', `0 0 ${probe.naturalWidth} ${probe.naturalHeight}`);
+    img.setAttribute('width', probe.naturalWidth);
+    img.setAttribute('height', probe.naturalHeight);
+    renderFloorplan();
+  };
+  probe.onerror = () => {
+    floorplan.imageLoaded = false;
+    img.removeAttribute('href');
+    status.textContent = '会場図画像が見つかりません。web/static/floorplan に配置してサーバーを再起動してください。';
+    renderFloorplan();
+  };
+  probe.src = '/floorplan?cb=' + Date.now();
+}
+
+function svgPointFromEvent(svg, ev) {
+  const pt = svg.createSVGPoint();
+  pt.x = ev.clientX;
+  pt.y = ev.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+function attachDrag(el, ap) {
+  let pointerId = null;
+  el.addEventListener('pointerdown', (ev) => {
+    if (!floorplan.editing) return;
+    ev.preventDefault();
+    pointerId = ev.pointerId;
+    el.setPointerCapture(pointerId);
+    el.classList.add('dragging');
+    el.classList.remove('unplaced');
+    // While a drag is in flight, any re-render (poll tick or save callback)
+    // would tear this SVG node down and cancel pointer capture. Block it.
+    floorplan.draggingAP = ap;
+  });
+  el.addEventListener('pointermove', (ev) => {
+    if (pointerId === null) return;
+    const svg = document.getElementById('floorplan-svg');
+    const p = svgPointFromEvent(svg, ev);
+    const pos = {
+      x: Math.max(0, Math.min(floorplan.imageW, p.x)),
+      y: Math.max(0, Math.min(floorplan.imageH, p.y)),
+    };
+    floorplan.pending[ap] = pos;
+    document.getElementById('save-positions').disabled = false;
+    // Update only this dot's transform — full re-render would replace the
+    // node and lose the pointer capture mid-drag.
+    el.setAttribute('transform', `translate(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`);
+  });
+  const release = () => {
+    if (pointerId === null) return;
+    try { el.releasePointerCapture(pointerId); } catch (_) {}
+    pointerId = null;
+    el.classList.remove('dragging');
+    floorplan.draggingAP = null;
+    // Re-render once so status text and user pins catch up to the new pos.
+    renderFloorplan();
+  };
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+}
+
+function renderFloorplan(skipRebuild) {
+  // Don't rebuild while a drag is in progress — replacing the SVG nodes
+  // would cancel pointer capture and abort the drag mid-stroke.
+  if (floorplan.draggingAP) return;
+
+  const apLayer = document.getElementById('ap-layer');
+  const userLayer = document.getElementById('user-layer');
+  const wrap = document.getElementById('floorplan-wrap');
+  wrap.classList.toggle('editing', floorplan.editing);
+
+  // Build per-AP user list. In "me" mode we only highlight the current
+  // user (looked up by source IP via /api/me); in "all" mode we show
+  // every registered MAC's current location.
+  const usersByAP = {};
+  const myMAC = floorplan.myMAC;
+  for (const c of floorplan.lastClients || []) {
+    if (!c.online || !c.access_point) continue;
+    if (floorplan.view === 'me') {
+      if (!myMAC || c.mac !== myMAC) continue;
+    } else {
+      if (!c.registered) continue;
+    }
+    (usersByAP[c.access_point] ||= []).push(c);
+  }
+
+  if (!skipRebuild) {
+    apLayer.innerHTML = '';
+    let unplacedIdx = 0;
+    for (const ap of floorplan.knownAPs) {
+      let pos = effectivePosition(ap);
+      const placed = pos !== null;
+      if (!placed) pos = unplacedStackPosition(unplacedIdx++);
+
+      const users = usersByAP[ap] || [];
+      const count = users.length;
+      const active = count > 0;
+      // "Am I on this AP?" is checked against floorplan.myMAC regardless of
+      // the current view mode, so the red marker is always visible.
+      const meHere = !!floorplan.myMAC && users.some(u => u.mac === floorplan.myMAC);
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'ap-dot'
+        + (placed ? '' : ' unplaced')
+        + (active ? ' active' : '')
+        + (meHere ? ' me-here' : ''));
+      g.dataset.ap = ap;
+      g.setAttribute('transform', `translate(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`);
+
+      const r = Math.max(10, Math.min(28, 10 + count * 4));
+      const fill = meHere ? '#dc2626' : (active ? '#16a34a' : '#94a3b8');
+
+      // Expanding halo ring sits beneath the dot — gives the pulsing
+      // "ping" look at occupied APs while leaving empty ones static.
+      if (active) {
+        const halo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        halo.setAttribute('class', 'halo');
+        halo.setAttribute('r', r);
+        halo.style.transformOrigin = '0 0';
+        g.appendChild(halo);
+      }
+
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('class', 'body-circle');
+      circle.setAttribute('r', r);
+      circle.setAttribute('fill', fill);
+      g.appendChild(circle);
+
+      if (count > 0) {
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('class', 'ap-label');
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('dominant-baseline', 'central');
+        label.textContent = count;
+        g.appendChild(label);
+      }
+
+      const name = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      name.setAttribute('class', 'ap-name');
+      name.setAttribute('text-anchor', 'middle');
+      name.setAttribute('y', r + 12);
+      name.textContent = ap;
+      g.appendChild(name);
+
+      attachDrag(g, ap);
+      g.addEventListener('click', () => {
+        if (floorplan.editing) return;
+        const users = (usersByAP[ap] || []).map(u => u.name || u.host_name || u.mac);
+        const lines = users.length ? users.join('\n  - ') : '(該当する登録者はいません)';
+        alert(`${ap}\n  - ${lines}`);
+      });
+      apLayer.appendChild(g);
+    }
+  }
+
+  // User pins: always emit name tags next to placed APs so the user can see
+  // who's where. Empty in "me" mode if we couldn't identify the viewer.
+  userLayer.innerHTML = '';
+  {
+    for (const ap of Object.keys(usersByAP)) {
+      const pos = effectivePosition(ap);
+      if (!pos) continue;
+      const users = usersByAP[ap];
+      for (let i = 0; i < users.length; i++) {
+        const u = users[i];
+        const ox = 18 + (i % 3) * 50;
+        const oy = -8 + Math.floor(i / 3) * 16;
+        const label = (u.name || u.host_name || u.mac).slice(0, 12);
+        const w = label.length * 6 + 10;
+
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'user-pin');
+        g.setAttribute('transform', `translate(${pos.x + ox}, ${pos.y + oy})`);
+
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('width', w);
+        rect.setAttribute('height', 14);
+        rect.setAttribute('rx', 3);
+        g.appendChild(rect);
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', 5);
+        text.setAttribute('y', 11);
+        text.textContent = label;
+        g.appendChild(text);
+
+        userLayer.appendChild(g);
+      }
+    }
+  }
+
+  // Status footer.
+  const placed = floorplan.knownAPs.filter(ap => effectivePosition(ap)).length;
+  const pendingCount = Object.keys(floorplan.pending).length;
+  const status = document.getElementById('floorplan-status');
+  let modeMsg = '';
+  if (floorplan.view === 'me') {
+    modeMsg = floorplan.myMAC
+      ? ` — 自分の位置モード (${floorplan.myMAC})`
+      : ' — 自分の位置モード (お使いの端末が見つかりません。`?ip=` で IP を指定してください)';
+  } else {
+    const count = Object.values(usersByAP).reduce((n, a) => n + a.length, 0);
+    modeMsg = ` — 全員の位置モード (登録者 ${count} 名を表示中)`;
+  }
+  if (floorplan.imageLoaded || floorplan.knownAPs.length > 0) {
+    status.textContent =
+      `AP ${floorplan.knownAPs.length} 台 / 配置済み ${placed} 台` +
+      (pendingCount ? ` / 未保存 ${pendingCount} 件` : '') +
+      (floorplan.editing ? ' — 編集モード中' : modeMsg);
+  }
+}
+
+async function refreshFloorplan(clients) {
+  floorplan.lastClients = clients;
+  try {
+    const [aps, positions] = await Promise.all([
+      fetchJSON('/api/aps'),
+      fetchJSON('/api/ap-positions'),
+    ]);
+    floorplan.knownAPs = aps || [];
+    floorplan.positions = positions || {};
+    renderFloorplan();
+  } catch (e) {
+    console.warn('floorplan refresh failed', e);
+  }
+}
+
+async function savePositions() {
+  // Merge pending edits on top of the saved set, then POST the full state.
+  const next = { ...floorplan.positions };
+  for (const [ap, p] of Object.entries(floorplan.pending)) next[ap] = p;
+  try {
+    const saved = await fetchJSON('/api/ap-positions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(next),
+    });
+    floorplan.positions = saved || next;
+    floorplan.pending = {};
+    document.getElementById('save-positions').disabled = true;
+    renderFloorplan();
+  } catch (e) {
+    alert('保存に失敗しました: ' + e.message);
+  }
+}
+
+document.getElementById('edit-mode').addEventListener('change', (ev) => {
+  floorplan.editing = ev.target.checked;
+  renderFloorplan();
+});
+document.getElementById('view-toggle').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('button[data-view]');
+  if (!btn) return;
+  floorplan.view = btn.dataset.view;
+  document.querySelectorAll('#view-toggle button').forEach(b =>
+    b.classList.toggle('active', b === btn));
+  renderFloorplan();
+});
+document.getElementById('save-positions').addEventListener('click', savePositions);
+
+function clientsURL() {
+  const all = localStorage.getItem('noc-tracker-show-all') === '1';
+  return all ? '/api/clients?all=true' : '/api/clients';
+}
+
+async function refresh() {
+  try {
+    const [status, me, clients] = await Promise.all([
+      fetchJSON('/api/status'),
+      fetchJSON(meURL()),
+      fetchJSON(clientsURL()),
+    ]);
+
+    const lp = status.last_poll ? new Date(status.last_poll).toLocaleTimeString() : '未取得';
+    const err = status.last_error ? ` — エラー: ${status.last_error}` : '';
+    document.getElementById('status').textContent =
+      `最終ポーリング: ${lp} / 検知クライアント: ${status.clients}${err}`;
+
+    const meBody = document.getElementById('me-body');
+    const quickForm = document.getElementById('quick-register-form');
+    if (me.found) {
+      const c = me.client;
+      const label = c.name || c.host_name || c.mac;
+      const regBadge = c.registered
+        ? `<span class="badge online" style="margin-left:6px">登録済み: ${c.name}</span>`
+        : '';
+      meBody.innerHTML = `
+        <strong>${label}</strong> は
+        <strong>${c.access_point || '不明な AP'}</strong> に接続されています${regBadge}
+        <div class="muted">${c.ssid || ''} / ${c.ip_address || ''} / ${c.mac}</div>`;
+      floorplan.myMAC = c.mac;
+      // Show the one-click register form when the viewer isn't registered
+      // yet. Pre-fill the name with whatever the device reported (host name,
+      // often something like "kaede-laptop02") so most people just click.
+      quickForm.style.display = c.registered ? 'none' : 'flex';
+      if (!c.registered) {
+        const nameInput = document.getElementById('quick-register-name');
+        if (!nameInput.value) nameInput.value = c.host_name || '';
+        quickForm.dataset.mac = c.mac;
+      }
+    } else {
+      meBody.innerHTML = `<div class="muted">IP ${me.ip} に該当する端末が見つかりませんでした。同じ LAN から接続し直すか、<code>?ip=自分のIP</code> を付けて URL を開いてください。</div>`;
+      floorplan.myMAC = null;
+      quickForm.style.display = 'none';
+    }
+
+    const tbody = document.getElementById('clients-body');
+    tbody.innerHTML = '';
+    for (const c of clients) {
+      const tr = document.createElement('tr');
+      const badge = c.online
+        ? '<span class="badge online">online</span>'
+        : (c.registered ? '<span class="badge offline">offline</span>' : '<span class="badge">unknown</span>');
+      tr.innerHTML = `
+        <td>${badge}</td>
+        <td>${c.name || c.host_name || ''}</td>
+        <td><code>${c.mac}</code></td>
+        <td>${c.ip_address || ''}</td>
+        <td>${c.access_point || ''}</td>
+        <td>${c.ssid || ''}</td>
+        <td>${fmtSignal(c)}</td>
+        <td>${c.source || ''}</td>
+        <td>${c.registered ? `<button class="danger" data-mac="${c.mac}">削除</button>` : ''}</td>`;
+      tbody.appendChild(tr);
+    }
+    tbody.querySelectorAll('button.danger').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm(`${btn.dataset.mac} の登録を削除する?`)) return;
+        await fetchJSON('/api/registrations/' + encodeURIComponent(btn.dataset.mac), { method: 'DELETE' });
+        refresh();
+      };
+    });
+
+    refreshFloorplan(clients);
+  } catch (e) {
+    document.getElementById('status').textContent = 'データ取得に失敗しました: ' + e.message;
+  }
+}
+
+document.getElementById('quick-register-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  const mac = form.dataset.mac;
+  const name = document.getElementById('quick-register-name').value.trim();
+  if (!mac || !name) return;
+  try {
+    await fetchJSON('/api/registrations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mac, name }),
+    });
+    document.getElementById('quick-register-name').value = '';
+    refresh();
+  } catch (e) {
+    alert('登録に失敗しました: ' + e.message);
+  }
+});
+
+document.getElementById('ip-clear-link').addEventListener('click', (ev) => {
+  ev.preventDefault();
+  localStorage.removeItem('noc-tracker-ip');
+  applyIPOverrideUI();
+  refresh();
+});
+applyIPOverrideUI();
+
+const showAllCheckbox = document.getElementById('show-all-clients');
+showAllCheckbox.checked = localStorage.getItem('noc-tracker-show-all') === '1';
+showAllCheckbox.addEventListener('change', () => {
+  if (showAllCheckbox.checked) localStorage.setItem('noc-tracker-show-all', '1');
+  else localStorage.removeItem('noc-tracker-show-all');
+  refresh();
+});
+
+console.log('[noc-tracker] listeners attached, kicking off');
+setupFloorplanImage();
+refreshAuth().then(() => {
+  console.log('[noc-tracker] auth ready', auth);
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+}).catch((e) => {
+  console.error('[noc-tracker] init failed', e);
+  const banner = document.getElementById('js-error-banner');
+  if (banner) {
+    banner.style.display = 'block';
+    banner.textContent = 'Init error: ' + (e.message || e);
+  }
+});
+</script>
+</body>
+</html>

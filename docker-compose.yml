@@ -1,0 +1,25 @@
+# Quick-start compose file. Two ways to run:
+#
+#   docker compose up -d                  # pulls ghcr.io image
+#   docker compose up -d --build          # builds locally from Dockerfile
+#
+# Persistent state (registrations.json, ap-positions.json, floorplan image)
+# lives in ./data — mount it elsewhere if you want to back it up separately.
+
+services:
+  noc-tracker:
+    image: ghcr.io/csenet/noc-tracker:latest
+    build: .
+    container_name: noc-tracker
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      NOC_LISTEN: ":8080"
+      NOC_STORE_PATH: /data/registrations.json
+      NOC_AP_POSITIONS_PATH: /data/ap-positions.json
+      NOC_FLOORPLAN_DIR: /data
+      TZ: Asia/Tokyo
+    volumes:
+      - ./data:/data

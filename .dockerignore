@@ -1,0 +1,11 @@
+.git
+.github
+.env
+.env.local
+data/
+*.test
+registrations.json
+ap-positions.json
+README.md
+Dockerfile
+docker-compose.yml

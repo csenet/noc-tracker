@@ -1,0 +1,7 @@
+.env
+.env.local
+registrations.json
+ap-positions.json
+/noc-tracker
+/data/
+*.test
