@@ -14,6 +14,12 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+    # Use host networking if you need the container to inherit the host's
+    # network identity (Linux only — has no effect on Docker Desktop for
+    # Mac/Windows). Most people don't need this; the source-IP problem it
+    # appears to fix is usually a host-route issue, not a Docker one. If
+    # you enable this, drop the `ports:` block above.
+    # network_mode: host
     env_file: .env
     environment:
       NOC_LISTEN: ":8080"
