@@ -101,6 +101,25 @@ NOC_ADMIN_TOKEN=hogehoge123 go run .
 
 トークン未設定 (デフォルト) なら誰でも編集可能 — 既存挙動を壊さないため opt-in。
 
+## Binary で動かす (推奨)
+
+毎 push で GitHub Actions が `linux/amd64`, `linux/arm64`, `darwin/amd64`,
+`darwin/arm64` の static binary を生成する:
+
+- **main push**: Actions の Run ページ → Artifacts に出る (14日保持)
+- **タグ push** (`v1.0.0` など): [GitHub Releases](https://github.com/csenet/noc-tracker/releases)
+  に upload される
+
+```bash
+# 例: タグ release から
+curl -L https://github.com/csenet/noc-tracker/releases/latest/download/noc-tracker_linux_amd64.tar.gz | tar xz
+cp .env.example .env  # 値を編集
+./noc-tracker_linux_amd64
+```
+
+⚠️ **IAP source を使うなら `expect(1)` が PATH に必要** (`apt install expect` /
+`brew install expect`)。Instant On のみで動かす場合は不要。
+
 ## Docker で動かす
 
 `expect(1)` も同梱した alpine ベースのイメージを `ghcr.io/csenet/noc-tracker:latest`
