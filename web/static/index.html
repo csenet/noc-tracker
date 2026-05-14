@@ -177,13 +177,8 @@
       <input id="quick-register-name" placeholder="お名前 (例: koichi)" required style="flex:1; min-width:200px;">
       <button type="submit">この端末を登録する</button>
     </form>
-    <form id="pick-device-form" class="row" style="margin-top:8px; display:none">
-      <input id="pick-device-input" list="all-devices" placeholder="自分の端末を選ぶ (ホスト名 / MAC で検索)" style="flex:1; min-width:280px;">
-      <datalist id="all-devices"></datalist>
-      <button type="submit">これにする</button>
-    </form>
     <div id="override-status" class="muted" style="margin-top:6px; display:none">
-      <span id="override-display"></span>
+      IP指定中: <code id="override-display"></code>
       <a href="#" id="override-clear-link" style="margin-left:8px">[クリア]</a>
     </div>
   </div>
@@ -264,9 +259,9 @@ if (new URLSearchParams(location.search).get('embed') === '1') {
 
 const REFRESH_MS = 5000;
 
-// Pull `?admin=<token>`, `?ip=<override>`, and `?mac=<override>` out of the
-// URL on first load, stash them in localStorage, and strip them from the
-// address bar so they don't leak when someone copy-pastes the URL.
+// Pull `?admin=<token>` and `?ip=<override>` out of the URL on first load,
+// stash them in localStorage, and strip them from the address bar so they
+// don't leak when someone copy-pastes the URL.
 (function captureURLOverrides() {
   const params = new URLSearchParams(location.search);
   let touched = false;
@@ -282,13 +277,6 @@ const REFRESH_MS = 5000;
     params.delete('ip');
     touched = true;
   }
-  if (params.has('mac')) {
-    const mac = params.get('mac').trim();
-    if (mac) localStorage.setItem('noc-tracker-mac', mac);
-    else localStorage.removeItem('noc-tracker-mac');
-    params.delete('mac');
-    touched = true;
-  }
   if (touched) {
     const qs = params.toString();
     history.replaceState({}, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
@@ -296,15 +284,11 @@ const REFRESH_MS = 5000;
 })();
 
 function applyOverrideUI() {
-  const mac = localStorage.getItem('noc-tracker-mac');
   const ip = localStorage.getItem('noc-tracker-ip');
   const status = document.getElementById('override-status');
   if (!status) return;
-  if (mac) {
-    document.getElementById('override-display').innerHTML = 'MAC指定中: <code>' + mac + '</code>';
-    status.style.display = 'block';
-  } else if (ip) {
-    document.getElementById('override-display').innerHTML = 'IP指定中: <code>' + ip + '</code>';
+  if (ip) {
+    document.getElementById('override-display').textContent = ip;
     status.style.display = 'block';
   } else {
     status.style.display = 'none';
@@ -360,35 +344,8 @@ function fmtSignal(c) {
 }
 
 function meURL() {
-  const mac = localStorage.getItem('noc-tracker-mac');
-  if (mac) return '/api/me?mac=' + encodeURIComponent(mac);
   const ip = localStorage.getItem('noc-tracker-ip');
-  if (ip) return '/api/me?ip=' + encodeURIComponent(ip);
-  return '/api/me';
-}
-
-// Populate the device picker datalist with every online client. Called
-// lazily when the user actually opens the picker so we don't hammer
-// /api/clients?all=true on every poll tick.
-let devicePickerPopulated = false;
-async function populateDevicePicker() {
-  if (devicePickerPopulated) return;
-  try {
-    const all = await fetchJSON('/api/clients?all=true');
-    const datalist = document.getElementById('all-devices');
-    datalist.innerHTML = '';
-    for (const c of all) {
-      if (!c.mac) continue;
-      const opt = document.createElement('option');
-      opt.value = c.mac;
-      const label = c.name || c.host_name || c.mac;
-      opt.label = `${label} (${c.ip_address || '?'})`;
-      datalist.appendChild(opt);
-    }
-    devicePickerPopulated = true;
-  } catch (e) {
-    console.warn('device picker fetch failed', e);
-  }
+  return ip ? '/api/me?ip=' + encodeURIComponent(ip) : '/api/me';
 }
 
 // ===== Floorplan =====
@@ -705,7 +662,6 @@ async function refresh() {
 
     const meBody = document.getElementById('me-body');
     const quickForm = document.getElementById('quick-register-form');
-    const pickForm = document.getElementById('pick-device-form');
     if (me.found) {
       const c = me.client;
       const label = c.name || c.host_name || c.mac;
@@ -723,14 +679,10 @@ async function refresh() {
         if (!nameInput.value) nameInput.value = c.host_name || '';
         quickForm.dataset.mac = c.mac;
       }
-      pickForm.style.display = 'none';
     } else {
-      const id = me.mac || me.ip || '不明';
-      meBody.innerHTML = `<div class="muted">${id} に該当する端末が見つかりませんでした。下のフォームから自分の端末を選んでください (VPN や別ネットワーク経由でアクセスしている場合に必要です)。</div>`;
+      meBody.innerHTML = `<div class="muted">IP ${me.ip} に該当する端末が見つかりませんでした。同じ Wi-Fi に接続してから再度お試しください。</div>`;
       floorplan.myMAC = null;
       quickForm.style.display = 'none';
-      pickForm.style.display = 'flex';
-      populateDevicePicker();
     }
 
     const tbody = document.getElementById('clients-body');
@@ -787,24 +739,10 @@ document.getElementById('quick-register-form').addEventListener('submit', async 
 
 document.getElementById('override-clear-link').addEventListener('click', (ev) => {
   ev.preventDefault();
-  localStorage.removeItem('noc-tracker-mac');
   localStorage.removeItem('noc-tracker-ip');
   applyOverrideUI();
   refresh();
 });
-
-document.getElementById('pick-device-form').addEventListener('submit', (ev) => {
-  ev.preventDefault();
-  const v = document.getElementById('pick-device-input').value.trim();
-  if (!v) return;
-  // datalist values are MAC addresses; tolerate the user pasting anything
-  // that looks like a MAC anyway.
-  localStorage.setItem('noc-tracker-mac', v);
-  document.getElementById('pick-device-input').value = '';
-  applyOverrideUI();
-  refresh();
-});
-
 applyOverrideUI();
 
 const showAllCheckbox = document.getElementById('show-all-clients');

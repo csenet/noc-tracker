@@ -209,29 +209,9 @@ func (s *Server) handleDeleteRegistration(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleMe identifies the requester and returns their current AP/location.
-// Lookup order: explicit ?mac= (most reliable — survives VPN/NAT and IP
-// changes), then ?ip=, then the request's source IP. The frontend stashes
-// the chosen MAC in localStorage so users only have to pick it once.
+// handleMe identifies the requester by source IP and returns their current
+// AP/location. The IP can be overridden with ?ip= for localhost testing.
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	if mac := r.URL.Query().Get("mac"); mac != "" {
-		sighting, ok := s.tracker.SightingByMAC(mac)
-		if !ok {
-			writeJSON(w, http.StatusOK, map[string]any{
-				"mac":   mac,
-				"found": false,
-			})
-			return
-		}
-		reg, registered := s.store.Get(sighting.MAC)
-		writeJSON(w, http.StatusOK, map[string]any{
-			"mac":    sighting.MAC,
-			"found":  true,
-			"client": sightingToEntry(sighting, reg, registered),
-		})
-		return
-	}
-
 	ip := r.URL.Query().Get("ip")
 	if ip == "" {
 		ip = clientIP(r)
