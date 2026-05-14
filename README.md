@@ -129,6 +129,21 @@ docker compose up -d --build
 このディレクトリを優先する設計になっている。なので画像差し替えだけならコンテナ
 再ビルド不要。
 
+### ネットワーク設定
+
+デフォルトの `docker-compose.yml` は **Linux 本番運用** を想定して
+`network_mode: host` を使う。理由はソースIPがそのままホストのNIC由来
+になるので `/api/me` の IP マッチが効きやすいから。
+
+| 環境 | 設定 |
+| --- | --- |
+| **Linux サーバ (本番)** | `network_mode: host` のまま (デフォルト)。`8080` がホストの `8080` で公開される |
+| **Docker Desktop on Mac / Windows** | `network_mode: host` を消して `ports: ["8080:8080"]` に差し替え。host networking は Mac/Win では no-op で警告が出るだけ |
+
+VPN や別 NIC 経由でアクセスする場合は `network_mode: host` でも IP マッチ
+しないので、Web UI の「あなたの位置」で **端末を MAC で選ぶ**
+(`?mac=aa:bb:cc:dd:ee:ff` でも可) のが確実。
+
 ## 設計メモ
 
 - **状態は in-memory + JSON ファイル**。履歴は持たない。「いま」の位置が分かることが目的。

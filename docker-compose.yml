@@ -12,14 +12,13 @@ services:
     build: .
     container_name: noc-tracker
     restart: unless-stopped
-    ports:
-      - "8080:8080"
-    # Use host networking if you need the container to inherit the host's
-    # network identity (Linux only — has no effect on Docker Desktop for
-    # Mac/Windows). Most people don't need this; the source-IP problem it
-    # appears to fix is usually a host-route issue, not a Docker one. If
-    # you enable this, drop the `ports:` block above.
-    # network_mode: host
+    # Linux production: container inherits the host's NICs directly so the
+    # source IP of incoming HTTP requests is the user's actual Wi-Fi IP,
+    # which lets /api/me work without a manual MAC override.
+    #
+    # On Docker Desktop (Mac/Windows) host networking is a no-op — swap the
+    # block below for `ports: ["8080:8080"]` when developing locally.
+    network_mode: host
     env_file: .env
     environment:
       NOC_LISTEN: ":8080"
