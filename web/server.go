@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -232,11 +233,25 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleAPs returns the sorted list of AP names currently observed in any
-// sighting — the floorplan editor uses this to know which dots to render
-// even before any have been positioned.
+// handleAPs returns the sorted list of AP names the floorplan editor should
+// render dots for. We union the live sightings with the positions file so an
+// AP that has saved coordinates stays on the map even when nobody's currently
+// associated with it (otherwise empty APs would vanish from the venue map
+// during quiet periods).
 func (s *Server) handleAPs(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.tracker.KnownAPs())
+	seen := map[string]bool{}
+	for _, ap := range s.tracker.KnownAPs() {
+		seen[ap] = true
+	}
+	for ap := range s.positions.All() {
+		seen[ap] = true
+	}
+	out := make([]string, 0, len(seen))
+	for ap := range seen {
+		out = append(out, ap)
+	}
+	sort.Strings(out)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleAPPositions(w http.ResponseWriter, r *http.Request) {
