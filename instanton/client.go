@@ -90,17 +90,19 @@ func (c *Client) Sites() ([]Site, error) {
 }
 
 type WirelessClient struct {
-	ID                  string `json:"id"`
-	Name                string `json:"name"`
-	HostName            string `json:"hostName"`
-	WirelessNetworkName string `json:"wirelessNetworkName"`
-	IPAddress           string `json:"ipAddress"`
-	MacAddress          string `json:"macAddress"`
-	DeviceName          string `json:"deviceName"`
-	DeviceId            string `json:"deviceId"`
-	WirelessBand        string `json:"wirelessBand"`
-	SignalQuality       string `json:"signalQuality"`
-	SignalInDbm         int    `json:"signalInDbm"`
+	ID                          string `json:"id"`
+	Name                        string `json:"name"`
+	HostName                    string `json:"hostName"`
+	WirelessNetworkName         string `json:"wirelessNetworkName"`
+	IPAddress                   string `json:"ipAddress"`
+	MacAddress                  string `json:"macAddress"`
+	DeviceName                  string `json:"deviceName"`
+	DeviceId                    string `json:"deviceId"`
+	WirelessBand                string `json:"wirelessBand"`
+	SignalQuality               string `json:"signalQuality"`
+	SignalInDbm                 int    `json:"signalInDbm"`
+	Status                      string `json:"status"`
+	ConnectionDurationInSeconds int    `json:"connectionDurationInSeconds"`
 }
 
 type clientSummaryResponse struct {
@@ -125,4 +127,24 @@ func (c *Client) WirelessClients(siteID string) ([]WirelessClient, error) {
 		return nil, err
 	}
 	return cr.Elements, nil
+}
+
+// DumpClientSummary returns the raw clientSummary JSON for a site. Exposed for
+// the instanton-dump command so callers can inspect undocumented fields
+// (status, connectionDurationInSeconds, etc.) without a typed struct in the
+// way.
+func (c *Client) DumpClientSummary(siteID string) ([]byte, error) {
+	resp, err := c.request("GET", "/sites/"+siteID+"/clientSummary")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return body, fmt.Errorf("clientSummary: status %d", resp.StatusCode)
+	}
+	return body, nil
 }

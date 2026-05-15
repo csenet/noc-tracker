@@ -104,6 +104,9 @@ func (t *Tracker) refresh() {
 					continue
 				}
 				for _, c := range clients {
+					if !isInstantOnClientOnline(c) {
+						continue
+					}
 					mac := NormalizeMAC(c.MacAddress)
 					if mac == "" {
 						continue
@@ -233,6 +236,19 @@ func (t *Tracker) Status() (lastPoll time.Time, lastError string, count int) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.lastPoll, t.lastError, len(t.byMAC)
+}
+
+// isInstantOnClientOnline filters out clients that the Instant On
+// clientSummary endpoint returns as historical/offline entries. The endpoint
+// reports both currently-connected and recently-disconnected sessions; the
+// tracker only cares about "where is this MAC right now", so anything not
+// currently up is dropped.
+//
+// Verified empirically against a live cloud portal (982 rows: 233 "up", 749
+// "down"). Offline clients keep their last DeviceName populated, so the AP
+// field alone isn't a reliable signal — Status is.
+func isInstantOnClientOnline(c instanton.WirelessClient) bool {
+	return strings.EqualFold(strings.TrimSpace(c.Status), "up")
 }
 
 func firstNonEmpty(values ...string) string {
